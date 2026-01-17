@@ -7,7 +7,7 @@
  */
 
 echo "========================================\n";
-echo "Paraşüt API v2 - Hızlı Test\n";
+echo "Paraşüt API v4 - Hızlı Test\n";
 echo "========================================\n\n";
 
 // .env dosyası kontrolü
@@ -26,11 +26,10 @@ echo "✓ .env dosyası bulundu\n\n";
 // Test 1: Config yükleme
 echo "1. Konfigürasyon yükleniyor...\n";
 try {
-    require_once __DIR__ . '/config/api.php';
-    $apiConfig = new ParasutAPI();
+    require_once __DIR__ . '/config/parasut_api.php';
     echo "   ✓ API konfigürasyonu yüklendi\n";
-    echo "   Base URL: " . $apiConfig->getBaseUrl() . "\n";
-    echo "   Company ID: " . ($apiConfig->getCompanyId() ?: 'AYARLANMAMIŞ') . "\n\n";
+    echo "   Base URL: " . PARASUT_BASE_URL . "/" . PARASUT_API_VERSION . "/" . PARASUT_COMPANY_ID . "\n";
+    echo "   Company ID: " . PARASUT_COMPANY_ID . "\n\n";
 } catch (Exception $e) {
     echo "   ✗ HATA: " . $e->getMessage() . "\n";
     exit(1);
@@ -40,25 +39,22 @@ try {
 echo "2. Veritabanı bağlantısı kontrol ediliyor...\n";
 try {
     require_once __DIR__ . '/config/database.php';
-    $db = new Database();
-    $conn = $db->getConnection();
+    $pdo = getDBConnection();
     echo "   ✓ Veritabanına bağlanıldı\n\n";
 } catch (Exception $e) {
     echo "   ⚠️  Veritabanı hatası: " . $e->getMessage() . "\n";
     echo "   (Token cache kullanılamayacak, ancak API testi devam edebilir)\n\n";
+    $pdo = null;
 }
 
 // Test 3: Authentication
 echo "3. API Authentication testi...\n";
 try {
-    require_once __DIR__ . '/api/auth.php';
-    $auth = new ParasutAuth();
-    
     echo "   Token alınıyor...\n";
-    $tokenData = $auth->getToken();
+    $tokenData = getParasutToken();
     
     echo "   ✓ Token başarıyla alındı!\n";
-    echo "   Token Type: " . ($tokenData['token_type'] ?? 'N/A') . "\n";
+    echo "   Token Type: " . ($tokenData['token_type'] ?? 'Bearer') . "\n";
     echo "   Expires In: " . ($tokenData['expires_in'] ?? 'N/A') . " saniye\n";
     
     if (isset($tokenData['access_token'])) {
@@ -80,25 +76,19 @@ try {
 // Test 4: API Client (basit bir istek)
 echo "4. API Client testi (basit endpoint kontrolü)...\n";
 try {
-    require_once __DIR__ . '/api/client.php';
-    $client = new ParasutClient();
+    $accessToken = $tokenData['access_token'];
     
-    $apiConfig = new ParasutAPI();
-    $companyId = $apiConfig->getCompanyId();
+    echo "   Contacts endpoint'ine test isteği gönderiliyor...\n";
+    $response = parasutApiRequest('contacts', $accessToken, ['page[size]' => 1, 'page[number]' => 1]);
     
-    if (empty($companyId) || $companyId === 'your_company_id_here') {
-        echo "   ⚠️  Company ID ayarlanmamış, endpoint testi atlanıyor\n";
+    if (isset($response['data'])) {
+        echo "   ✓ API isteği başarılı!\n";
+        $recordCount = count($response['data']);
+        $totalCount = $response['meta']['total_count'] ?? 'Bilinmiyor';
+        echo "   Bu sayfada: $recordCount kayıt\n";
+        echo "   Toplam kayıt sayısı: $totalCount\n";
     } else {
-        echo "   Contacts endpoint'ine test isteği gönderiliyor...\n";
-        $endpoint = '/' . $companyId . '/contacts';
-        $response = $client->get($endpoint, ['page' => 1, 'per_page' => 1]);
-        
-        if (isset($response['data'])) {
-            echo "   ✓ API isteği başarılı!\n";
-            echo "   Toplam kayıt sayısı: " . ($response['meta']['total_count'] ?? 'Bilinmiyor') . "\n";
-        } else {
-            echo "   ⚠️  API yanıtı beklenen formatta değil\n";
-        }
+        echo "   ⚠️  API yanıtı beklenen formatta değil\n";
     }
     
     echo "\n";
